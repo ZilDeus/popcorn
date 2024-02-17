@@ -15,7 +15,7 @@
   let sse: EventSource;
   onMount(async () => {
     try {
-      sse = new EventSource(`http://${PUBLIC_SERVER_URL}/rooms_sse`);
+      sse = new EventSource(`${PUBLIC_SERVER_URL}/rooms_sse`);
       sse.onerror = (_) => {
         sse.close();
       };
@@ -32,7 +32,7 @@
       console.log(e);
     }
     try {
-      const request = await fetch(`http://${PUBLIC_SERVER_URL}/active_rooms`, {
+      const request = await fetch(`${PUBLIC_SERVER_URL}/active_rooms`, {
         method: "GET",
       });
       const requestJson = await request.json();
@@ -69,7 +69,7 @@
                 body: JSON.stringify(params),
               };
               await fetch(
-                `http://${PUBLIC_SERVER_URL}/create_room`,
+                `${PUBLIC_SERVER_URL}/create_room`,
                 options,
               ).then(async (res) => {
                 const s = await res.json();

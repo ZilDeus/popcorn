@@ -3,7 +3,7 @@ export async function getRoom(id: string | undefined) {
   if (!id)
     return null;
   try {
-    const res = await fetch(`http://${PUBLIC_SERVER_URL}/room/${id}`);
+    const res = await fetch(`${PUBLIC_SERVER_URL}/room/${id}`);
     await res.json();
   } catch {
     return null;
