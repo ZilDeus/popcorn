@@ -6,7 +6,7 @@
   import { Button } from "$cui/button";
   import { goto } from "$app/navigation";
   import { getRoom } from "./utils";
-  import { PUBLIC_WEBSOCKER_URL } from "$env/static/public";
+  import { PUBLIC_WEBSOCKET_URL } from "$env/static/public";
   let websocket: WebSocket;
   let peers: Map<string, Peer> = new Map();
   let audioEle: HTMLAudioElement;
@@ -125,7 +125,7 @@
     audioEle.srcObject = remote;
     audioEle.play();
     try {
-      websocket = new WebSocket(`${PUBLIC_WEBSOCKER_URL}/ws`);
+      websocket = new WebSocket(`${PUBLIC_WEBSOCKET_URL}/ws`);
       // Connection opened
       websocket.addEventListener("open", (_) => {
         if (data.user) {
