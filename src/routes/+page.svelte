@@ -68,14 +68,13 @@
                 method: "POST",
                 body: JSON.stringify(params),
               };
-              await fetch(
-                `${PUBLIC_SERVER_URL}/create_room`,
-                options,
-              ).then(async (res) => {
-                const s = await res.json();
-                console.log(s);
-                goto(`room/${s.id}`);
-              });
+              await fetch(`${PUBLIC_SERVER_URL}/create_room`, options).then(
+                async (res) => {
+                  const s = await res.json();
+                  console.log(s);
+                  goto(`room/${s.id}`);
+                },
+              );
             }
           }}>Create!</AlertDialog.Action
         >

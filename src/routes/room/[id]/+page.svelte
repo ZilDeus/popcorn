@@ -9,9 +9,10 @@
   import { PUBLIC_WEBSOCKET_URL } from "$env/static/public";
   let websocket: WebSocket;
   let peers: Map<string, Peer> = new Map();
-  let audioEle: HTMLAudioElement;
+  let audioElements: HTMLAudioElement[] = [];
   let remote = new MediaStream();
-  let muted = false, sound = true;
+  let muted = false,
+    sound = true;
   function toggleOtherMute() {
     sound = !sound;
     remote.getAudioTracks().forEach((t) => {
@@ -29,10 +30,12 @@
     });
   }
   async function initConnection() {
-    remote.getTracks().forEach((track) => {
-      remote.removeTrack(track);
+    audioElements.forEach((audioEle, _) => {
+      audioEle.remove();
     });
+    while (audioElements.length) audioElements.pop();
     peers.forEach((peer, _) => {
+      peer.removeTracks(peer.getStreamLocal().getTracks());
       peer.destroy();
     });
     peers.clear();
@@ -40,22 +43,28 @@
       console.log("not enough users to start a voice chat");
       return;
     }
+    room.users.forEach((_) => {
+      let audioEle: HTMLAudioElement = new Audio();
+      audioElements = [...audioElements, audioEle];
+    });
     const myIndex = room.users.indexOf(data.user.username);
     if (myIndex == -1) {
       console.log("god kill me");
     }
     const from = room.users[myIndex];
+    const localAudio = await Peer.getUserMedia({ audio: true, video: false });
     for (let i = myIndex + 1; i < room.users.length; i++) {
       const to = room.users[i];
       const peer = new Peer();
-      const localAudio = await Peer.getUserMedia({ audio: true, video: false });
       peer.addStream(localAudio);
       peer.start();
       peer.on("streamRemote", (stream) => {
-        console.log("got a stream");
-        stream.getAudioTracks().forEach((track) => {
-          remote.addTrack(track);
-        });
+        console.log("got a stream from ", to);
+        const audioEle = audioElements[i];
+        if (audioEle) {
+          audioEle.srcObject = stream;
+          audioEle.play();
+        }
       });
       peer.on("onicecandidates", (iceCandidates) => {
         console.log(`sending candidates from ${from} to ${to}`);
@@ -122,8 +131,6 @@
     websocket?.close();
   });
   onMount(async () => {
-    audioEle.srcObject = remote;
-    audioEle.play();
     try {
       websocket = new WebSocket(`${PUBLIC_WEBSOCKET_URL}/ws`);
       // Connection opened
@@ -165,7 +172,7 @@
               const peer = peers.get(eventData.data.from);
               peer?.signal(desc);
               console.log(
-                `client ${eventData.data.from} and ${eventData.data.to} peers are connected !`,
+                `client ${eventData.data.from} and ${eventData.data.to} are connected !`,
               );
             }
             break;
@@ -182,10 +189,11 @@
               peer.addStream(localAudio);
               peer.signal(eventData.data.description);
               peer.on("streamRemote", (stream) => {
-                console.log("got a stream");
-                stream.getAudioTracks().forEach((track) => {
-                  remote.addTrack(track);
-                });
+                console.log("got a stream from ", eventData.data.from);
+                const audioEle: HTMLAudioElement = new Audio();
+                audioEle.srcObject = stream;
+                audioEle.play();
+                audioElements = [...audioElements, audioEle];
               });
               peer.on("onicecandidates", (iceCandidates) => {
                 console.log(
@@ -282,16 +290,6 @@
             break;
           case "pause":
             {
-              //const timeInM = Math.floor(eventData.data.time / 60);
-              //const timeInS = Math.floor(eventData.data.time % 60);
-              //messages = [
-              //  ...messages,
-              //  {
-              //    data: `paused the video on ${timeInM}:${timeInS}`,
-              //    type: 1,
-              //    sender: eventData.sender,
-              //  },
-              //];
               if (videoEle.currentTime == eventData.data.time) return;
               videoEle.currentTime = eventData.data.time;
               videoEle.pause();
@@ -299,16 +297,6 @@
             break;
           case "load":
             {
-              //const timeInM = Math.floor(eventData.data.time / 60);
-              //const timeInS = Math.floor(eventData.data.time % 60);
-              //messages = [
-              //  ...messages,
-              //  {
-              //    data: `loaded a new video on ${timeInM}:${timeInS}`,
-              //    type: 1,
-              //    sender: eventData.sender,
-              //  },
-              //];
               if (videoEle.src == eventData.data.url) return;
               videoEle.src = eventData.data.url;
               videoEle.currentTime = eventData.data.time ?? 0;
@@ -324,7 +312,9 @@
   });
 </script>
 
-<audio bind:this={audioEle} class="hidden" />
+{#each audioElements as audioEle}
+  <audio bind:this={audioEle} class="hidden" autoplay />
+{/each}
 <div class="flex flex-row justify-around">
   <p class="text-center text-primary">{room.name}</p>
   <p class="text-center text-primary">{room.users.length}</p>
