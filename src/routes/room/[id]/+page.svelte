@@ -7,94 +7,23 @@
   import { goto } from "$app/navigation";
   import { getRoom } from "./utils";
   import { PUBLIC_WEBSOCKET_URL } from "$env/static/public";
+  import { VoiceChat } from "./voiceChat";
+  export let data;
   let websocket: WebSocket;
-  let peers: Map<string, Peer> = new Map();
-  let audioElements: HTMLAudioElement[] = [];
-  let remote = new MediaStream();
-  let muted = false,
-    sound = true;
-  function toggleOtherMute() {
-    sound = !sound;
-    remote.getAudioTracks().forEach((t) => {
-      t.enabled = sound;
-    });
-  }
-  function toggleSelfMute() {
-    muted = !muted;
-    peers.forEach((p, _) => {
-      p.getStreamLocal()
-        .getAudioTracks()
-        .forEach((t) => {
-          t.enabled = !muted;
-        });
-    });
-  }
-  async function initConnection() {
-    audioElements.forEach((audioEle, _) => {
-      audioEle.remove();
-    });
-    while (audioElements.length) audioElements.pop();
-    peers.forEach((peer, _) => {
-      peer.removeTracks(peer.getStreamLocal().getTracks());
-      peer.destroy();
-    });
-    peers.clear();
-    if (room.users.length <= 0) {
-      console.log("not enough users to start a voice chat");
-      return;
-    }
-    room.users.forEach((_) => {
-      let audioEle: HTMLAudioElement = new Audio();
-      audioElements = [...audioElements, audioEle];
-    });
-    const myIndex = room.users.indexOf(data.user.username);
+  const vc = new VoiceChat(data.user.username);
+  let audioElements: Map<string, HTMLAudioElement> = new Map();
+  let audio: HTMLAudioElement;
+  async function AddConnection(users: string[]) {
+    //start counting from my index and up
+    console.log(users);
+    const myIndex = users.indexOf(data.user.username);
     if (myIndex == -1) {
       console.log("god kill me");
+      return;
     }
-    const from = room.users[myIndex];
-    const localAudio = await Peer.getUserMedia({ audio: true, video: false });
-    for (let i = myIndex + 1; i < room.users.length; i++) {
-      const to = room.users[i];
-      const peer = new Peer();
-      peer.addStream(localAudio);
-      peer.start();
-      peer.on("streamRemote", (stream) => {
-        console.log("got a stream from ", to);
-        const audioEle = audioElements[i];
-        if (audioEle) {
-          audioEle.srcObject = stream;
-          audioEle.play();
-        }
-      });
-      peer.on("onicecandidates", (iceCandidates) => {
-        console.log(`sending candidates from ${from} to ${to}`);
-        websocket.send(
-          JSON.stringify({
-            event: "candidates",
-            from: from,
-            data: {
-              candidates: iceCandidates,
-              from: from,
-              to: to,
-            },
-          }),
-        );
-      });
-      peer.on("signal", (desc) => {
-        console.log(`sending offer from ${from} to ${to}`);
-        websocket.send(
-          JSON.stringify({
-            event: "offer",
-            sender: to,
-            data: {
-              from: from,
-              to: to,
-              description: desc,
-            },
-          }),
-        );
-      });
-      peers.set(to, peer);
+    //find if the peer is already in the vc if not create another peer
+    for (let i = myIndex + 1; i < users.length; i++) {
+      await vc.AddPeer(users[i]);
     }
   }
   let messageToSend: string;
@@ -126,13 +55,32 @@
       changeVideoSource();
     }
   }
-  export let data;
   onDestroy(async () => {
     websocket?.close();
   });
   onMount(async () => {
+    //vc.onPeer = (_) => {
+    //  console.log("i sense a disturbance in the force!!");
+    //};
+    //vc.onPeerJoined = (name) => {
+    //  console.log("new peer", name, " joined the voice chat");
+    //};
+    //vc.onPeerLeft = (name) => {
+    //  console.log("peer", name, " left the");
+    //};
+    vc.onAddStream = (name, stream) => {
+      audio.srcObject = vc.stream;
+    };
     try {
       websocket = new WebSocket(`${PUBLIC_WEBSOCKET_URL}/ws`);
+      navigator.mediaDevices
+        .getUserMedia({
+          audio: true,
+          video: false,
+        })
+        .then((stream) => {
+          vc.Init(stream, websocket);
+        });
       // Connection opened
       websocket.addEventListener("open", (_) => {
         if (data.user) {
@@ -152,15 +100,12 @@
         const eventData = JSON.parse(event.data);
         switch (eventData.event) {
           case "candidates":
-            {
-              console.log(
-                `recived candidates from ${eventData.data.from} to me ${eventData.data.to}`,
-              );
-              const peer = peers.get(eventData.data.from);
-              eventData.data.candidates.forEach(async (c: RTCIceCandidate) => {
-                peer?.addIceCandidate(c);
-              });
-            }
+            console.log(
+              `recived candidates from ${eventData.data.from} to me ${eventData.data.to}`,
+            );
+            const peer = vc.GetPeer(eventData.sender);
+            if (peer?.remoteDescription)
+              peer?.addIceCandidate(eventData.data.candidate);
             break;
           case "answer":
             {
@@ -169,70 +114,19 @@
                 `recived answer from ${eventData.data.from} to me ${eventData.data.to}`,
                 desc,
               );
-              const peer = peers.get(eventData.data.from);
-              peer?.signal(desc);
+              const peer = vc.GetPeer(eventData.data.from);
+              peer?.setRemoteDescription(eventData.data.description);
               console.log(
                 `client ${eventData.data.from} and ${eventData.data.to} are connected !`,
               );
             }
             break;
           case "offer":
-            const func = async () => {
-              console.log(
-                `recived offer from ${eventData.data.from} to me ${eventData.data.to}`,
-              );
-              const peer = new Peer();
-              const localAudio = await Peer.getUserMedia({
-                audio: true,
-                video: false,
-              });
-              peer.addStream(localAudio);
-              peer.signal(eventData.data.description);
-              peer.on("streamRemote", (stream) => {
-                console.log("got a stream from ", eventData.data.from);
-                const audioEle: HTMLAudioElement = new Audio();
-                audioEle.srcObject = stream;
-                audioEle.play();
-                audioElements = [...audioElements, audioEle];
-              });
-              peer.on("onicecandidates", (iceCandidates) => {
-                console.log(
-                  `sending iceCandidates from ${eventData.data.to} to  ${eventData.data.from}`,
-                );
-                websocket.send(
-                  JSON.stringify({
-                    event: "candidates",
-                    sender: eventData.data.to,
-                    data: {
-                      from: eventData.data.to,
-                      to: eventData.data.from,
-                      candidates: iceCandidates,
-                    },
-                  }),
-                );
-              });
-              peer.on("signal", (desc) => {
-                console.log(
-                  `sending answer from ${eventData.data.to} to  ${eventData.data.from}`,
-                );
-                websocket.send(
-                  JSON.stringify({
-                    event: "answer",
-                    sender: eventData.data.to,
-                    data: {
-                      from: eventData.data.to,
-                      to: eventData.data.from,
-                      description: desc,
-                    },
-                  }),
-                );
-              });
-              peers.set(eventData.data.from, peer);
-            };
-            func();
+            vc.AddPeer(eventData.sender, eventData.data.description);
             break;
           case "room-update":
             if (room.users.length < eventData.data.users.length) {
+              AddConnection(eventData.data.users);
               messages = [
                 ...messages,
                 {
@@ -263,9 +157,9 @@
                   sender: eventData.sender,
                 },
               ];
+              vc.RemovePeer(eventData.sender);
             }
             room = eventData.data;
-            initConnection();
             break;
           case "message":
             messages = [
@@ -312,9 +206,6 @@
   });
 </script>
 
-{#each audioElements as audioEle}
-  <audio bind:this={audioEle} class="hidden" autoplay />
-{/each}
 <div class="flex flex-row justify-around">
   <p class="text-center text-primary">{room.name}</p>
   <p class="text-center text-primary">{room.users.length}</p>
@@ -369,6 +260,9 @@
         <track kind="captions" />
       </video>
     </div>
+    <div class="hidden">
+      <audio bind:this={audio} autoplay />
+    </div>
     <div class="flex flex-row gap-1">
       <Input
         placeholder="enter video URL"
@@ -416,15 +310,15 @@
           }
         }}
       />
-      <Button on:click={toggleSelfMute}>
-        {#if muted}
+      <Button on:click={vc.ToggleMute}>
+        {#if vc.IsMuted()}
           <MicOff />
         {:else}
           <Mic />
         {/if}
       </Button>
-      <Button on:click={toggleOtherMute}>
-        {#if sound}
+      <Button on:click={vc.ToggleSound}>
+        {#if vc.IsPlaying()}
           <Volume2 />
         {:else}
           <VolumeX />
