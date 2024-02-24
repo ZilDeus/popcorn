@@ -1,3 +1,4 @@
+
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
@@ -14,6 +15,7 @@ export class VoiceChat {
   signalingServer?: WebSocket;
   playing: boolean = true;
   peers: Map<string, RTCPeerConnection> = new Map();
+  candidates: Map<string, RTCIceCandidate[]> = new Map();
   streams: Map<string, MediaStream> = new Map();
   stream?: MediaStream;
   localStream: MediaStream | null = null;
@@ -24,10 +26,10 @@ export class VoiceChat {
   onRemoveStream?: (name: string) => void;
   constructor(self: string) {
     this.self = self;
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => this.localStream = stream)
   }
-  public Init(localStream: MediaStream, server: WebSocket) {
+  public Init(server: WebSocket) {
     this.signalingServer = server;
-    this.localStream = localStream;
   }
   public HasPeer(name: string) {
     return this.peers.has(name);
@@ -65,6 +67,7 @@ export class VoiceChat {
     peer.createAnswer().then((answer) => {
       peer.setLocalDescription(answer);
       console.log("sending answer from me", this.self, "to", peerName)
+      console.log("peer", this.self, "can now recive IceCandidates from peer", peerName);
       this.signalingServer?.send(
         JSON.stringify({
           event: 'answer',
@@ -97,9 +100,14 @@ export class VoiceChat {
           }
         })
       )
-      //create a peer connection , add p1s offer as it's answer
     }
     this.peers.set(peerName, peer);
+  }
+  public AnswerPeer(peerName: string, description: RTCSessionDescription) {
+    console.log("recived answer from", peerName, "to me", this.self);
+    const peer = this.peers.get(peerName);
+    peer?.setRemoteDescription(description);
+    console.log("peer ", this.self, "can now recive IceCandidates from", peerName);
   }
   private async AddOfferPeer(peerName: string) {
     const peer = new RTCPeerConnection(RTCConfig);
@@ -147,6 +155,22 @@ export class VoiceChat {
     }
     this.peers.set(peerName, peer);
   }
+  public AddCandidateToPeer(peerName: string, candidate: RTCIceCandidate) {
+    console.log('recived candidates from', peerName, 'to me', this.self);
+    const peer = this.peers.get(peerName);
+    if (!peer)
+      return;
+    if (peer.localDescription && peer.remoteDescription) {
+      console.log("peer", this.self, "is ready to recive ICE from peer", peerName)
+      peer.addIceCandidate(candidate);
+      while (this.candidates.get(peerName)?.length) {
+        peer.addIceCandidate(this.candidates.get(peerName)?.pop());
+      }
+    }
+    else
+      this.candidates.get(peerName)?.push(candidate);
+
+  }
   public AddPeer(peerName: string): void;
   public AddPeer(peerName: string, desc: RTCSessionDescriptionInit): void;
   public AddPeer(peerName: string, desc?: RTCSessionDescriptionInit): void {
@@ -159,8 +183,8 @@ export class VoiceChat {
       this.AddAnswerPeer(peerName, desc);
     else
       this.AddOfferPeer(peerName);
-    //this.FireUpdate(peerName);
-    //this.FireJoined(peerName);
+    this.FireUpdate(peerName);
+    this.FireJoined(peerName);
   }
 
   public AddStream(name: string, stream: MediaStream) {

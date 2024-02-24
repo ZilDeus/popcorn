@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Peer from "peer-lite";
   import { onDestroy, onMount } from "svelte";
   import { Mic, MicOff, Volume2, VolumeX, Search } from "lucide-svelte";
   import { Input } from "$cui/input";
@@ -11,11 +10,10 @@
   export let data;
   let websocket: WebSocket;
   const vc = new VoiceChat(data.user.username);
-  let audioElements: Map<string, HTMLAudioElement> = new Map();
-  let audio: HTMLAudioElement;
+  let remoteStreams: Map<string, HTMLAudioElement> = new Map();
+  let audioElements: { peer: string; audioElement: HTMLAudioElement }[] = [];
   async function AddConnection(users: string[]) {
     //start counting from my index and up
-    console.log(users);
     const myIndex = users.indexOf(data.user.username);
     if (myIndex == -1) {
       console.log("god kill me");
@@ -23,7 +21,7 @@
     }
     //find if the peer is already in the vc if not create another peer
     for (let i = myIndex + 1; i < users.length; i++) {
-      await vc.AddPeer(users[i]);
+      vc.AddPeer(users[i]);
     }
   }
   let messageToSend: string;
@@ -59,28 +57,31 @@
     websocket?.close();
   });
   onMount(async () => {
-    //vc.onPeer = (_) => {
-    //  console.log("i sense a disturbance in the force!!");
-    //};
-    //vc.onPeerJoined = (name) => {
-    //  console.log("new peer", name, " joined the voice chat");
-    //};
-    //vc.onPeerLeft = (name) => {
-    //  console.log("peer", name, " left the");
-    //};
+    vc.onPeer = (_) => {
+      console.log("i sense a disturbance in the force!!");
+    };
+    vc.onPeerJoined = (name) => {
+      console.log("new peer", name, " joined the voice chat");
+    };
+    vc.onPeerLeft = (name) => {
+      console.log("peer", name, " left the");
+    };
     vc.onAddStream = (name, stream) => {
-      audio.srcObject = vc.stream;
+      const audio = new Audio();
+      audio.srcObject = stream;
+      audio.play();
+      //remoteStreams.set(name, audio);
+      audioElements = [...audioElements, { peer: name, audioElement: audio }];
+    };
+    vc.onRemoveStream = (name) => {
+      const index = audioElements.findIndex((t) => t.peer == name);
+      audioElements[index].audioElement.pause();
+      audioElements = audioElements.splice(index, 1);
+      //trigger the update
     };
     try {
       websocket = new WebSocket(`${PUBLIC_WEBSOCKET_URL}/ws`);
-      navigator.mediaDevices
-        .getUserMedia({
-          audio: true,
-          video: false,
-        })
-        .then((stream) => {
-          vc.Init(stream, websocket);
-        });
+      vc.Init(websocket);
       // Connection opened
       websocket.addEventListener("open", (_) => {
         if (data.user) {
@@ -100,25 +101,14 @@
         const eventData = JSON.parse(event.data);
         switch (eventData.event) {
           case "candidates":
-            console.log(
-              `recived candidates from ${eventData.data.from} to me ${eventData.data.to}`,
+            vc.AddCandidateToPeer(
+              eventData.data.from,
+              eventData.data.candidate,
             );
-            const peer = vc.GetPeer(eventData.sender);
-            if (peer?.remoteDescription)
-              peer?.addIceCandidate(eventData.data.candidate);
             break;
           case "answer":
             {
-              const desc = eventData.data.description;
-              console.log(
-                `recived answer from ${eventData.data.from} to me ${eventData.data.to}`,
-                desc,
-              );
-              const peer = vc.GetPeer(eventData.data.from);
-              peer?.setRemoteDescription(eventData.data.description);
-              console.log(
-                `client ${eventData.data.from} and ${eventData.data.to} are connected !`,
-              );
+              vc.AnswerPeer(eventData.data.from, eventData.data.description);
             }
             break;
           case "offer":
@@ -260,9 +250,7 @@
         <track kind="captions" />
       </video>
     </div>
-    <div class="hidden">
-      <audio bind:this={audio} autoplay />
-    </div>
+    <div class="hidden"></div>
     <div class="flex flex-row gap-1">
       <Input
         placeholder="enter video URL"
