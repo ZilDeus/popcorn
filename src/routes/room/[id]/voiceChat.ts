@@ -9,24 +9,19 @@ let RTCConfig: RTCConfiguration = {
     }
   ],
 }
-export class VoiceChat {
+export class VoiceChat extends EventTarget {
   muted: boolean = false;
   self: string = "";
   signalingServer?: WebSocket;
-  playing: boolean = true;
+  sound: boolean = true;
   peers: Map<string, RTCPeerConnection> = new Map();
   candidates: Map<string, RTCIceCandidate[]> = new Map();
-  streams: Map<string, MediaStream> = new Map();
-  stream?: MediaStream;
-  localStream: MediaStream | null = null;
-  onPeerLeft?: (name: string) => void;
-  onPeerJoined?: (name: string) => void;
-  onPeer?: (name: string) => void;
-  onAddStream?: (name: string, stream: MediaStream) => void;
-  onRemoveStream?: (name: string) => void;
+  remoteStreams: Map<string, MediaStream> = new Map();
+  localStream?: MediaStream;
+  streamAudios: Map<MediaStream, HTMLAudioElement> = new Map();
   constructor(self: string) {
+    super()
     this.self = self;
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => this.localStream = stream)
   }
   public Init(server: WebSocket) {
     this.signalingServer = server;
@@ -37,32 +32,10 @@ export class VoiceChat {
   public GetPeer(name: string): RTCPeerConnection | undefined {
     return this.peers.get(name);
   }
-  private FireRemoveStream(name: string) {
-    if (this.onRemoveStream)
-      this.onRemoveStream(name);
-  }
-  private FireAddStream(name: string, stream: MediaStream) {
-    if (this.onAddStream)
-      this.onAddStream(name, stream);
-  }
-  private FireLeft(name: string) {
-    if (this.onPeerLeft)
-      this.onPeerLeft(name);
-  }
-  private FireUpdate(name: string) {
-    if (this.onPeer)
-      this.onPeer(name);
-  }
-  private FireJoined(name: string) {
-    if (this.onPeerJoined)
-      this.onPeerJoined(name);
-  }
-  private async AddAnswerPeer(peerName: string, description: RTCSessionDescriptionInit) {
+  private async AddAnswerPeer(peer: RTCPeerConnection, peerName: string, description: RTCSessionDescriptionInit) {
     console.log(
       `recived offer from ${peerName} to me ${this.self}`,
     );
-    const peer = new RTCPeerConnection(RTCConfig);
-    this.localStream?.getTracks().forEach((t) => peer.addTrack(t));
     peer.setRemoteDescription(description);
     peer.createAnswer().then((answer) => {
       peer.setLocalDescription(answer);
@@ -82,10 +55,7 @@ export class VoiceChat {
     })
     peer.ontrack = (ev) => {
       console.log("got a track form peer", peerName)
-      if (!this.stream)
-        this.stream = new MediaStream();
-      this.stream.addTrack(ev.track);
-      this.FireAddStream(peerName, this.stream);
+      this.AddStream(peerName, ev.track)
     }
     peer.onicecandidate = (ev) => {
       console.log("sending candidates from me", this.self, "to", peerName)
@@ -109,9 +79,7 @@ export class VoiceChat {
     peer?.setRemoteDescription(description);
     console.log("peer ", this.self, "can now recive IceCandidates from", peerName);
   }
-  private async AddOfferPeer(peerName: string) {
-    const peer = new RTCPeerConnection(RTCConfig);
-    this.localStream?.getTracks().forEach((t) => peer.addTrack(t));
+  private async AddOfferPeer(peer: RTCPeerConnection, peerName: string) {
     peer.createOffer({
       offerToReceiveAudio: true,
       offerToReceiveVideo: false,
@@ -133,14 +101,11 @@ export class VoiceChat {
 
     peer.ontrack = (ev) => {
       console.log("got a track form peer", peerName)
-      if (!this.stream)
-        this.stream = new MediaStream();
-      this.stream.addTrack(ev.track);
-      this.FireAddStream(peerName, this.stream);
+      this.AddStream(peerName, ev.track)
     }
 
     peer.onicecandidate = (ev) => {
-      console.log("sending candidates from me", this.self, "to", peerName)
+      //console.log("sending candidates from me", this.self, "to", peerName)
       this.signalingServer?.send(
         JSON.stringify({
           event: 'candidates',
@@ -173,53 +138,70 @@ export class VoiceChat {
   }
   public AddPeer(peerName: string): void;
   public AddPeer(peerName: string, desc: RTCSessionDescriptionInit): void;
-  public AddPeer(peerName: string, desc?: RTCSessionDescriptionInit): void {
+  public async AddPeer(peerName: string, desc?: RTCSessionDescriptionInit): Promise<void> {
     if (this.HasPeer(peerName)) {
       console.log("peer already connected");
       return;
     }
     console.log("adding a peer", peerName, " to vc");
+    if (!this.localStream)
+      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const peer = new RTCPeerConnection(RTCConfig);
+    this.localStream.getAudioTracks().forEach((t) => peer.addTrack(t))
     if (desc)
-      this.AddAnswerPeer(peerName, desc);
+      this.AddAnswerPeer(peer, peerName, desc);
     else
-      this.AddOfferPeer(peerName);
-    this.FireUpdate(peerName);
-    this.FireJoined(peerName);
+      this.AddOfferPeer(peer, peerName);
+    super.dispatchEvent(
+      new CustomEvent('peer-join', { detail: { peer: peerName } })
+    )
   }
 
-  public AddStream(name: string, stream: MediaStream) {
-    this.streams.set(name, stream);
-    this.FireAddStream(name, stream);
+  public AddStream(name: string, track: MediaStreamTrack) {
+    const stream = new MediaStream();
+    stream.addTrack(track);
+    const audio = new Audio();
+    audio.srcObject = stream;
+    audio.play();
+    this.remoteStreams.set(name, stream);
+    this.streamAudios.set(stream, audio);
   }
   public RemovePeer(name: string) {
     this.peers.delete(name);
-    let stream = this.streams.get(name);
+    let stream = this.remoteStreams.get(name);
+    if (stream)
+      this.streamAudios.get(stream)?.pause();
     stream?.getTracks().forEach((t) => t.stop());
-    this.streams.delete(name)
-    this.FireUpdate(name);
-    this.FireLeft(name);
-    this.FireRemoveStream(name);
-  }
-  public GetLocalStream() {
-    return this.localStream;
+    this.remoteStreams.delete(name)
+    super.dispatchEvent(
+      new CustomEvent('peer-left', { detail: { peer: name } })
+    )
   }
   public GetRemoteStreams() {
-    return this.streams;
+    return this.remoteStreams;
   }
   public ToggleMute() {
     this.muted = !this.muted;
-    this.localStream?.getTracks().forEach((track) => track.enabled = this.muted);
+    this.localStream?.getAudioTracks().forEach((t) => t.enabled = !this.muted)
+    super.dispatchEvent(
+      new CustomEvent('mute-toggle')
+    )
   }
   public ToggleSound() {
-    this.playing = !this.playing;
-    this.streams.forEach((stream) => {
-      stream.getTracks().forEach((track) => track.enabled = this.playing);
-    })
+    this.sound = !this.sound;
+    this.remoteStreams.forEach((stream) => stream.getAudioTracks().forEach((t) => t.enabled = this.sound))
+    super.dispatchEvent(
+      new CustomEvent('sound-toggle')
+    )
   }
   public IsMuted() {
     return this.muted;
   }
-  public IsPlaying() {
-    return this.playing;
+  public IsSound() {
+    return this.sound;
+  }
+  public Close() {
+    this.streamAudios.forEach((audio) => audio.pause())
+    this.remoteStreams.forEach((stream) => stream.getAudioTracks().forEach((t) => t.stop()))
   }
 }

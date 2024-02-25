@@ -9,9 +9,9 @@
   import { VoiceChat } from "./voiceChat";
   export let data;
   let websocket: WebSocket;
+  let mute = false,
+    sound = true;
   const vc = new VoiceChat(data.user.username);
-  let remoteStreams: Map<string, HTMLAudioElement> = new Map();
-  let audioElements: { peer: string; audioElement: HTMLAudioElement }[] = [];
   async function AddConnection(users: string[]) {
     //start counting from my index and up
     const myIndex = users.indexOf(data.user.username);
@@ -54,31 +54,50 @@
     }
   }
   onDestroy(async () => {
+    vc.Close();
     websocket?.close();
   });
   onMount(async () => {
-    vc.onPeer = (_) => {
-      console.log("i sense a disturbance in the force!!");
-    };
-    vc.onPeerJoined = (name) => {
-      console.log("new peer", name, " joined the voice chat");
-    };
-    vc.onPeerLeft = (name) => {
-      console.log("peer", name, " left the");
-    };
-    vc.onAddStream = (name, stream) => {
-      const audio = new Audio();
-      audio.srcObject = stream;
-      audio.play();
-      //remoteStreams.set(name, audio);
-      audioElements = [...audioElements, { peer: name, audioElement: audio }];
-    };
-    vc.onRemoveStream = (name) => {
-      const index = audioElements.findIndex((t) => t.peer == name);
-      audioElements[index].audioElement.pause();
-      audioElements = audioElements.splice(index, 1);
-      //trigger the update
-    };
+    //vc.onToggleMute = (mute) => {
+    //  console.log("mute status was changed from", !mute, "to", mute);
+    //};
+    vc.addEventListener("sound-toggle", () => {
+      sound = !sound;
+    });
+    vc.addEventListener("mute-toggle", () => {
+      mute = !mute;
+    });
+
+    vc.addEventListener("peer-join", (ev: Event) => {
+      const e = ev as CustomEvent;
+      console.log("peer", e.detail.peer, "joined");
+    });
+    vc.addEventListener("peer-join", (ev: Event) => {
+      const e = ev as CustomEvent;
+      console.log("peer", e.detail.peer, "left");
+    });
+    //vc.onPeer = (_) => {
+    //  console.log("i sense a disturbance in the force!!");
+    //};
+    //vc.onPeerJoined = (name) => {
+    //  console.log("new peer", name, " joined the voice chat");
+    //};
+    //vc.onPeerLeft = (name) => {
+    //  console.log("peer", name, " left the");
+    //};
+    //vc.onAddStream = (name, stream) => {
+    //  const audio = new Audio();
+    //  audio.srcObject = stream;
+    //  audio.play();
+    //  //remoteStreams.set(name, audio);
+    //  audioElements = [...audioElements, { peer: name, audioElement: audio }];
+    //};
+    //vc.onRemoveStream = (name) => {
+    //  const index = audioElements.findIndex((t) => t.peer == name);
+    //  audioElements[index].audioElement.pause();
+    //  audioElements = audioElements.splice(index, 1);
+    //  //trigger the update
+    //};
     try {
       websocket = new WebSocket(`${PUBLIC_WEBSOCKET_URL}/ws`);
       vc.Init(websocket);
@@ -298,15 +317,15 @@
           }
         }}
       />
-      <Button on:click={vc.ToggleMute}>
-        {#if vc.IsMuted()}
+      <Button on:click={() => vc.ToggleMute()}>
+        {#if mute}
           <MicOff />
         {:else}
           <Mic />
         {/if}
       </Button>
-      <Button on:click={vc.ToggleSound}>
-        {#if vc.IsPlaying()}
+      <Button on:click={() => vc.ToggleSound()}>
+        {#if sound}
           <Volume2 />
         {:else}
           <VolumeX />
