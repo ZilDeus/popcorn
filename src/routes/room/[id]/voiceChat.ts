@@ -2,15 +2,9 @@
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
-      urls: [
-        'stun:stun.l.google.com:19302',
-        'stun:stun1.l.google.com:19302',
-        'turn:turn01.hubl.in?transport=udp',
-        'turn:turn02.hubl.in?transport=tcp',
-        'turn:numb.viagenie.ca',
-      ],
-      credential: 'muazkh',
-      username: 'webrtc@live.com'
+      urls: 'TURN:freestun.net:3479',
+      credential: "free",
+      username: "free",
     }
   ],
 }
