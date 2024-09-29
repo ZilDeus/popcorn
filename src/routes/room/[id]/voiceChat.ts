@@ -2,9 +2,9 @@
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
-      urls: 'TURN:freestun.net:3479',
-      credential: "free",
-      username: "free",
+      urls: 'TURN:58.220.126.158:3478',
+      credential: "falah",
+      username: "falah",
     }
   ],
 }
