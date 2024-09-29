@@ -2,7 +2,7 @@
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
-      urls: 'TURN:58.220.126.158:3478',
+      urls: 'TURN:158.220.126.158:3478',
       credential: "falah",
       username: "falah",
     }
