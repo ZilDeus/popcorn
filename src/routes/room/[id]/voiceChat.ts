@@ -2,10 +2,10 @@
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
+      urls: "turn:global.relay.metered.ca:80",
+      username: "b7c6654db5b3c315967fb8ed",
+      credential: "aJdzpjogtU0z7YEw",
+    },
   ],
 }
 export class VoiceChat extends EventTarget {
