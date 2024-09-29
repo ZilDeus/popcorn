@@ -1,5 +1,4 @@
-
-let RTCConfig: RTCConfiguration = {
+let workingConfig: RTCConfiguration = {
   iceServers: [
     {
       urls: "stun:stun.relay.metered.ca:80",
@@ -26,6 +25,19 @@ let RTCConfig: RTCConfiguration = {
     },
   ],
 }
+
+const testingConfig: RTCConfiguration = {
+  iceServers: [
+    {
+      urls: 'turn:158.220.126.158:3478',
+      username: 'falah',
+      credential: 'falah',
+    }
+  ],
+}
+
+let RTCConfig: RTCConfiguration = testingConfig;
+
 export class VoiceChat extends EventTarget {
   muted: boolean = false;
   self: string = "";
