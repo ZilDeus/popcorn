@@ -2,9 +2,9 @@
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
-      urls: 'TURN:freestun.net:3479',
-      credential: "free",
-      username: "free",
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
     }
   ],
 }
