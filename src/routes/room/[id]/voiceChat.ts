@@ -2,7 +2,25 @@
 let RTCConfig: RTCConfiguration = {
   iceServers: [
     {
+      urls: "stun:stun.relay.metered.ca:80",
+    },
+    {
       urls: "turn:global.relay.metered.ca:80",
+      username: "b7c6654db5b3c315967fb8ed",
+      credential: "aJdzpjogtU0z7YEw",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "b7c6654db5b3c315967fb8ed",
+      credential: "aJdzpjogtU0z7YEw",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "b7c6654db5b3c315967fb8ed",
+      credential: "aJdzpjogtU0z7YEw",
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
       username: "b7c6654db5b3c315967fb8ed",
       credential: "aJdzpjogtU0z7YEw",
     },
